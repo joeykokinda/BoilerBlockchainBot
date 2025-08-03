@@ -29,7 +29,7 @@ print(f"Config loaded - Channel ID: {CHANNEL_ID}, Twitter token: {'✓' if TWITT
 
 TWITTER_ACCOUNTS = ["BoilerChain"]
 LAST_TWEET_IDS_FILE = "last_tweet_ids.json"
-CHECK_INTERVAL = 120  # 2 minutes for testing, will change back to 900 later
+CHECK_INTERVAL = 300  # 5 minutes for production
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -63,7 +63,7 @@ async def on_message(message):
     
     if message.channel.id == CHANNEL_ID and not message.content.startswith('!'):
         if any(platform in message.content.lower() for platform in ['twitter.com', 'instagram.com', 'linkedin.com', 'x.com']):
-            announcement = f"Hey, BoilerChain just posted new content!\n{message.content}"
+            announcement = f"Hey @everyone, BoilerChain just posted new content!\n{message.content}"
             await message.channel.send(announcement)
             print(f"Auto-announced post: {message.content[:50]}...")
 
@@ -127,13 +127,13 @@ async def post_social_update(platform, username, post_url, content_preview=""):
     channel = client.get_channel(CHANNEL_ID)
     if channel:
         if platform.lower() == "twitter":
-            message = f"Hey, {username} just posted a new Tweet!\n{post_url}"
+            message = f"Hey @everyone, {username} just posted a new Tweet!\n{post_url}"
         elif platform.lower() == "instagram":
-            message = f"Hey, {username} just posted a new shot!\n{post_url}"
+            message = f"Hey @everyone, {username} just posted a new shot!\n{post_url}"
         elif platform.lower() == "linkedin":
-            message = f"Hey, {username} just posted on LinkedIn!\n{post_url}"
+            message = f"Hey @everyone, {username} just posted on LinkedIn!\n{post_url}"
         else:
-            message = f"Hey, new post from {username}!\n{post_url}"
+            message = f"Hey @everyone, new post from {username}!\n{post_url}"
         
         await channel.send(message)
         print(f"Posted to Discord: {message[:100]}...")
