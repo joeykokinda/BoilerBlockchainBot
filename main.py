@@ -5,6 +5,8 @@ import requests
 import os
 import aiofiles
 from datetime import datetime, timedelta
+from aiohttp import web
+import threading
 
 TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID_STR = os.getenv('CHANNEL_ID', '0')
@@ -27,7 +29,7 @@ print(f"Config loaded - Channel ID: {CHANNEL_ID}, Twitter token: {'✓' if TWITT
 
 TWITTER_ACCOUNTS = ["BoilerChain"]
 LAST_TWEET_IDS_FILE = "last_tweet_ids.json"
-CHECK_INTERVAL = 300
+CHECK_INTERVAL = 900  # 15 minutes to respect Twitter rate limits
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -75,7 +77,10 @@ async def get_latest_tweets(username, limit=5):
         headers = {"Authorization": f"Bearer {TWITTER_BEARER_TOKEN}"}
         
         user_response = requests.get(user_url, headers=headers)
-        if user_response.status_code != 200:
+        if user_response.status_code == 429:
+            print(f"Rate limited by Twitter API for @{username}. Waiting...")
+            return []
+        elif user_response.status_code != 200:
             print(f"Error getting user ID for @{username}: {user_response.status_code}")
             return []
         
@@ -94,7 +99,10 @@ async def get_latest_tweets(username, limit=5):
         }
         
         tweets_response = requests.get(tweets_url, headers=headers, params=params)
-        if tweets_response.status_code != 200:
+        if tweets_response.status_code == 429:
+            print(f"Rate limited by Twitter API for @{username} tweets. Waiting...")
+            return []
+        elif tweets_response.status_code != 200:
             print(f"Error getting tweets for @{username}: {tweets_response.status_code}")
             return []
         
@@ -199,5 +207,18 @@ async def monitor_twitter():
         print(f"Waiting {CHECK_INTERVAL} seconds before next check...")
         await asyncio.sleep(CHECK_INTERVAL)
 
+async def health_check(request):
+    return web.Response(text="Bot is running", status=200)
+
+def start_health_server():
+    app = web.Application()
+    app.router.add_get('/health', health_check)
+    web.run_app(app, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+
 if __name__ == "__main__":
+    # Start health server in background thread
+    health_thread = threading.Thread(target=start_health_server, daemon=True)
+    health_thread.start()
+    
+    # Start Discord bot
     client.run(TOKEN)
