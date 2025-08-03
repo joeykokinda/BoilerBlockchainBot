@@ -5,7 +5,7 @@ import requests
 import os
 import aiofiles
 from datetime import datetime, timedelta
-from aiohttp import web
+from flask import Flask
 import threading
 
 TOKEN = os.getenv('DISCORD_TOKEN')
@@ -207,13 +207,19 @@ async def monitor_twitter():
         print(f"Waiting {CHECK_INTERVAL} seconds before next check...")
         await asyncio.sleep(CHECK_INTERVAL)
 
-async def health_check(request):
-    return web.Response(text="Bot is running", status=200)
-
 def start_health_server():
-    app = web.Application()
-    app.router.add_get('/health', health_check)
-    web.run_app(app, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
+    app = Flask(__name__)
+    
+    @app.route('/health')
+    def health_check():
+        return "Bot is running", 200
+    
+    @app.route('/')
+    def home():
+        return "BoilerChain Discord Bot is running", 200
+    
+    port = int(os.environ.get('PORT', 8080))
+    app.run(host='0.0.0.0', port=port, debug=False)
 
 if __name__ == "__main__":
     # Start health server in background thread
