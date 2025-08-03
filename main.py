@@ -5,8 +5,8 @@ import requests
 import os
 import aiofiles
 from datetime import datetime, timedelta
-from flask import Flask
 import threading
+import time
 
 TOKEN = os.getenv('DISCORD_TOKEN')
 CHANNEL_ID_STR = os.getenv('CHANNEL_ID', '0')
@@ -138,29 +138,22 @@ async def post_social_update(platform, username, post_url, content_preview=""):
         await channel.send(message)
         print(f"Posted to Discord: {message[:100]}...")
 
-async def load_last_tweet_ids():
-    try:
-        if os.path.exists(LAST_TWEET_IDS_FILE):
-            async with aiofiles.open(LAST_TWEET_IDS_FILE, 'r') as f:
-                content = await f.read()
-                return json.loads(content)
-        return {}
-    except Exception as e:
-        print(f"Error loading last tweet IDs: {e}")
-        return {}
 
-async def save_last_tweet_ids(tweet_ids):
-    try:
-        async with aiofiles.open(LAST_TWEET_IDS_FILE, 'w') as f:
-            await f.write(json.dumps(tweet_ids, indent=2))
-        print(f"Saved last tweet IDs: {tweet_ids}")
-    except Exception as e:
-        print(f"Error saving last tweet IDs: {e}")
 
 async def monitor_twitter():
     print("Starting continuous Twitter monitoring...")
     last_tweet_ids = await load_last_tweet_ids()
     print(f"Loaded last tweet IDs: {last_tweet_ids}")
+    
+    # If this is the first run (no saved IDs), initialize with latest tweet to prevent spam
+    if not last_tweet_ids:
+        print("First run detected - initializing with latest tweet IDs to prevent historical spam")
+        for account in TWITTER_ACCOUNTS:
+            tweets = await get_latest_tweets(account, 1)
+            if tweets:
+                last_tweet_ids[account] = tweets[0]['id']
+                print(f"Initialized @{account} with latest tweet ID: {tweets[0]['id']}")
+        await save_last_tweet_ids(last_tweet_ids)
     
     while True:
         try:
@@ -209,24 +202,60 @@ async def monitor_twitter():
         print(f"Waiting {CHECK_INTERVAL} seconds before next check...")
         await asyncio.sleep(CHECK_INTERVAL)
 
-def start_health_server():
-    app = Flask(__name__)
+async def load_last_tweet_ids():
+    try:
+        # Try to load from Railway environment variable first (persistent)
+        saved_ids = os.getenv('LAST_TWEET_IDS')
+        if saved_ids:
+            return json.loads(saved_ids)
+        
+        # Fallback to file (will be lost on restart)
+        if os.path.exists(LAST_TWEET_IDS_FILE):
+            async with aiofiles.open(LAST_TWEET_IDS_FILE, 'r') as f:
+                content = await f.read()
+                return json.loads(content)
+        return {}
+    except Exception as e:
+        print(f"Error loading last tweet IDs: {e}")
+        return {}
+
+async def save_last_tweet_ids(tweet_ids):
+    try:
+        # Save to file for immediate use
+        async with aiofiles.open(LAST_TWEET_IDS_FILE, 'w') as f:
+            await f.write(json.dumps(tweet_ids, indent=2))
+        print(f"Saved last tweet IDs: {tweet_ids}")
+        
+        # Note: Railway doesn't persist files between restarts
+        # In production, you'd want to use Railway's PostgreSQL add-on
+        
+    except Exception as e:
+        print(f"Error saving last tweet IDs: {e}")
+
+def keep_alive():
+    """Simple HTTP server to prevent Railway from shutting down"""
+    import http.server
+    import socketserver
     
-    @app.route('/health')
-    def health_check():
-        return "Bot is running", 200
-    
-    @app.route('/')
-    def home():
-        return "BoilerChain Discord Bot is running", 200
+    class Handler(http.server.SimpleHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/plain')
+            self.end_headers()
+            self.wfile.write(b'BoilerChain Discord Bot is running!')
     
     port = int(os.environ.get('PORT', 8080))
-    app.run(host='0.0.0.0', port=port, debug=False)
+    with socketserver.TCPServer(("", port), Handler) as httpd:
+        print(f"HTTP server running on port {port}")
+        httpd.serve_forever()
 
 if __name__ == "__main__":
-    # Start health server in background thread
-    health_thread = threading.Thread(target=start_health_server, daemon=True)
-    health_thread.start()
+    # Start simple HTTP server to prevent Railway shutdown
+    http_thread = threading.Thread(target=keep_alive, daemon=True)
+    http_thread.start()
+    
+    # Small delay to let HTTP server start
+    time.sleep(2)
     
     # Start Discord bot
     client.run(TOKEN)
