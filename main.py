@@ -8,11 +8,27 @@ from datetime import datetime, timedelta
 
 # Load config - Railway uses environment variables
 TOKEN = os.getenv('DISCORD_TOKEN')
-CHANNEL_ID = int(os.getenv('CHANNEL_ID', '0'))
+CHANNEL_ID_STR = os.getenv('CHANNEL_ID', '0')
 TWITTER_BEARER_TOKEN = os.getenv('TWITTER_BEARER_TOKEN', '')
 
+# Validate environment variables
+if not TOKEN:
+    print("ERROR: DISCORD_TOKEN environment variable is not set")
+    exit(1)
+
+try:
+    CHANNEL_ID = int(CHANNEL_ID_STR)
+except ValueError:
+    print(f"ERROR: CHANNEL_ID must be a number, got: {CHANNEL_ID_STR}")
+    exit(1)
+
+if not TWITTER_BEARER_TOKEN:
+    print("WARNING: TWITTER_BEARER_TOKEN not set - Twitter monitoring disabled")
+
+print(f"Config loaded - Channel ID: {CHANNEL_ID}, Twitter token: {'✓' if TWITTER_BEARER_TOKEN else '✗'}")
+
 # Twitter accounts to monitor
-TWITTER_ACCOUNTS = ["BoilerChain", "boilerblockchain"]  # Add your accounts here
+TWITTER_ACCOUNTS = ["BoilerChain"]  # Add your accounts here
 CHECK_INTERVAL = 300  # Check every 5 minutes
 last_check_time = {}
 
